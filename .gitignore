@@ -24,8 +24,8 @@ Thumbs.db
 .idea/
 
 # Data files (uploaded by users)
-*.xlsx
-*.csv
-*.xls
 *.db
 *.sqlite3
+
+# Keep sample portfolio (but ignore user uploads)
+!sample_portfolio.xlsx

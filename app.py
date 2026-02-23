@@ -39,10 +39,22 @@ def get_risk_grade_label(grade):
 
 # Page config
 st.set_page_config(
-    page_title="IFRS 9 Dual Provisioning Platform",
-    page_icon="⚖️",
+    page_title="CreditBox | IFRS 9 Provisioning",
+    page_icon="https://raw.githubusercontent.com/kayabel20/creditbox-ifrs9/main/.streamlit/favicon.ico",
     layout="wide"
 )
+
+# Custom CSS for branding
+st.markdown("""
+<style>
+    .main-header { font-size: 1.8rem; font-weight: 700; color: #366092; margin-bottom: 0; }
+    .sub-header { font-size: 1rem; color: #666; margin-top: 0; }
+    .sidebar-brand { text-align: center; padding: 1rem 0; border-bottom: 1px solid #e0e0e0; margin-bottom: 1rem; }
+    .sidebar-brand h2 { color: #366092; margin: 0; font-size: 1.4rem; }
+    .sidebar-brand p { color: #888; font-size: 0.8rem; margin: 0; }
+    .powered-by { text-align: center; color: #aaa; font-size: 0.7rem; padding-top: 2rem; border-top: 1px solid #e0e0e0; }
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================================
 # AUTHENTICATION
@@ -99,6 +111,30 @@ except Exception as e:
 # APP CONTENT (only reached if authenticated or auth skipped)
 # ============================================================================
 
+# Sidebar branding
+with st.sidebar:
+    st.markdown("""
+    <div class="sidebar-brand">
+        <h2>CreditBox</h2>
+        <p>IFRS 9 Provisioning Engine</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("**Quick Links**")
+    st.markdown("- Step 1: Institution Setup")
+    st.markdown("- Step 2: Regulatory Rules")
+    st.markdown("- Step 3: Upload Portfolio")
+    st.markdown("- Step 4: Calculate ECL")
+    st.markdown("- Step 5: Download Reports")
+
+    st.markdown("---")
+    st.markdown("""
+    <div class="powered-by">
+        Powered by CreditBox<br>
+        v1.0.0 | 7 African Markets
+    </div>
+    """, unsafe_allow_html=True)
+
 # Initialize session state
 if 'step' not in st.session_state:
     st.session_state.step = 1
@@ -114,8 +150,8 @@ if 'raw_upload' not in st.session_state:
     st.session_state.raw_upload = None
 
 # Title
-st.title("IFRS 9 + Regulatory Dual Provisioning Platform")
-st.markdown("**Simple 5-Step Process** | Upload Any Portfolio | Intelligent Field Detection | Full ECL Engine")
+st.markdown('<p class="main-header">CreditBox | IFRS 9 Dual Provisioning Platform</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Upload Any Portfolio | Intelligent Field Detection | Full ECL Engine | 7 African Markets</p>', unsafe_allow_html=True)
 
 # Progress bar
 progress_steps = ["Setup", "Rules", "Data", "Calculate", "Report"]
@@ -465,6 +501,20 @@ elif st.session_state.step == 3:
     If we can't auto-detect a required field, you can map it manually below.
     """)
 
+    # Sample download
+    sample_path = Path(__file__).parent / "sample_portfolio.xlsx"
+    if sample_path.exists():
+        with open(sample_path, "rb") as f:
+            st.download_button(
+                "Download Sample Portfolio (75 loans)",
+                data=f.read(),
+                file_name="sample_portfolio.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download a demo file to test the platform"
+            )
+
+    st.markdown("---")
+
     uploaded_file = st.file_uploader(
         "Upload Loan Data (Excel or CSV)",
         type=['xlsx', 'xls', 'csv'],
@@ -477,18 +527,41 @@ elif st.session_state.step == 3:
         try:
             if uploaded_file.name.endswith('.csv'):
                 raw_df = pd.read_csv(uploaded_file)
+                if len(raw_df.columns) <= 1:
+                    st.warning("CSV appears to have only 1 column. Trying semicolon delimiter...")
+                    uploaded_file.seek(0)
+                    raw_df = pd.read_csv(uploaded_file, sep=';')
             else:
-                xls = pd.ExcelFile(uploaded_file)
-                if len(xls.sheet_names) == 0:
-                    st.error("This Excel file contains no worksheets. Please re-export it from your source system and try again.")
-                elif len(xls.sheet_names) > 1:
-                    sheet = st.selectbox("Select sheet:", xls.sheet_names)
-                    raw_df = pd.read_excel(uploaded_file, sheet_name=sheet)
-                else:
-                    raw_df = pd.read_excel(uploaded_file, sheet_name=xls.sheet_names[0])
+                try:
+                    xls = pd.ExcelFile(uploaded_file)
+                except Exception:
+                    st.error("Cannot read this Excel file. It may be corrupted or password-protected. "
+                             "Try re-saving it as .xlsx from Excel, or export as CSV.")
+                    xls = None
+
+                if xls is not None:
+                    if len(xls.sheet_names) == 0:
+                        st.error("This Excel file contains no worksheets. "
+                                 "Please re-export it from your source system and try again.")
+                    elif len(xls.sheet_names) > 1:
+                        sheet = st.selectbox("Select sheet:", xls.sheet_names)
+                        raw_df = pd.read_excel(uploaded_file, sheet_name=sheet)
+                    else:
+                        raw_df = pd.read_excel(uploaded_file, sheet_name=xls.sheet_names[0])
+
         except Exception as e:
             st.error(f"Could not read file: {e}")
-            st.info("Try re-saving as .xlsx from Excel or export as CSV instead.")
+            st.info("Common fixes: re-save as .xlsx from Excel, or export as CSV. "
+                    "Make sure the file isn't password-protected.")
+
+        # Validate the data has content
+        if raw_df is not None and len(raw_df) == 0:
+            st.error("File loaded but contains no data rows. Please check your file has loan records.")
+            raw_df = None
+        elif raw_df is not None and len(raw_df.columns) < 3:
+            st.error(f"File has only {len(raw_df.columns)} column(s). A loan portfolio typically needs "
+                     f"at least loan ID, balance, and DPD columns. Please check your file format.")
+            raw_df = None
 
         if raw_df is not None and len(raw_df) > 0:
             st.success(f"Loaded **{len(raw_df):,}** rows with **{len(raw_df.columns)}** columns")
@@ -518,19 +591,35 @@ elif st.session_state.step == 3:
             # Build reverse map for display
             reverse_map = {v: k for k, v in auto_map.items()}
 
-            # Show auto-detected mappings
-            st.markdown("**Auto-detected mappings:**")
+            # Show auto-detected mappings with edit capability
+            st.markdown("**Auto-detected mappings** (review and override if needed):")
+
+            all_targets = ["(unmapped)"] + REQUIRED_FIELDS + OPTIONAL_FIELDS
+            mapping_overrides = {}
+
             if auto_map:
-                mapping_rows = []
                 for original_col, target_col in auto_map.items():
-                    status = "Required" if target_col in REQUIRED_FIELDS else "Optional"
-                    mapping_rows.append({
-                        "Your Column": original_col,
-                        "Mapped To": target_col,
-                        "Status": status,
-                    })
-                mapping_display = pd.DataFrame(mapping_rows)
-                st.dataframe(mapping_display, use_container_width=True, hide_index=True)
+                    col_a, col_b, col_c = st.columns([2, 2, 1])
+                    with col_a:
+                        st.text(original_col)
+                    with col_b:
+                        default_idx = all_targets.index(target_col) if target_col in all_targets else 0
+                        new_target = st.selectbox(
+                            f"Map '{original_col}'",
+                            options=all_targets,
+                            index=default_idx,
+                            key=f"remap_{original_col}",
+                            label_visibility="collapsed"
+                        )
+                        if new_target != "(unmapped)":
+                            mapping_overrides[original_col] = new_target
+                    with col_c:
+                        status = "Required" if target_col in REQUIRED_FIELDS else "Optional"
+                        st.markdown(f"{'**{0}**'.format(status) if status == 'Required' else status}")
+
+                # Re-apply overrides if user changed anything
+                if mapping_overrides != auto_map:
+                    mapped_df = raw_df.copy().rename(columns=mapping_overrides)
             else:
                 st.warning("No columns were auto-detected. Please map manually below.")
 
@@ -588,6 +677,67 @@ elif st.session_state.step == 3:
                         )
                         if selected != "(skip)":
                             mapped_df = mapped_df.rename(columns={selected: field})
+
+            # ============================================================
+            # DATE PARSING FIX: Convert Excel serial numbers to proper dates
+            # ============================================================
+            for date_col in ['disbursement_date', 'maturity_date']:
+                if date_col in mapped_df.columns:
+                    col_data = mapped_df[date_col]
+                    # Check if values look like Excel serial numbers (integers 30000-60000 range)
+                    numeric_vals = pd.to_numeric(col_data, errors='coerce')
+                    if numeric_vals.notna().any():
+                        serial_mask = (numeric_vals > 25000) & (numeric_vals < 60000)
+                        if serial_mask.sum() > len(col_data) * 0.5:
+                            # More than half are serial numbers — convert them
+                            from datetime import datetime as dt
+                            mapped_df[date_col] = numeric_vals.apply(
+                                lambda x: (dt(1899, 12, 30) + timedelta(days=int(x))).date()
+                                if pd.notna(x) and 25000 < x < 60000 else pd.NaT
+                            )
+                            st.info(f"Converted `{date_col}` from Excel serial numbers to dates")
+                    # Also try parsing string dates
+                    if mapped_df[date_col].dtype == 'object':
+                        mapped_df[date_col] = pd.to_datetime(mapped_df[date_col], errors='coerce')
+
+            # ============================================================
+            # CLASSIFICATION AUTO-CORRECT: Fix mismatched classification vs DPD
+            # ============================================================
+            if 'classification' in mapped_df.columns and 'days_past_due' in mapped_df.columns:
+                dpd_numeric = pd.to_numeric(mapped_df['days_past_due'], errors='coerce').fillna(0)
+                classification_lower = mapped_df['classification'].astype(str).str.lower()
+
+                # Detect mismatches: classification says current/normal but DPD > 30
+                mismatch_mask = (
+                    classification_lower.isin(['current', 'normal', 'performing']) &
+                    (dpd_numeric > 30)
+                )
+                mismatch_count = mismatch_mask.sum()
+
+                if mismatch_count > 0:
+                    st.warning(
+                        f"**Data quality issue:** {mismatch_count} loans are classified as "
+                        f"'Current/Normal' but have DPD > 30 days. "
+                        f"This suggests the classification column may be stale."
+                    )
+
+                    auto_correct = st.checkbox(
+                        "Auto-correct classifications based on DPD (recommended)",
+                        value=True,
+                        help="Override stale classifications using actual DPD values"
+                    )
+
+                    if auto_correct:
+                        def dpd_to_classification(dpd):
+                            if dpd <= 30: return 'Normal'
+                            elif dpd <= 90: return 'Substandard'
+                            elif dpd <= 180: return 'Doubtful'
+                            else: return 'Loss'
+
+                        mapped_df.loc[mismatch_mask, 'classification'] = (
+                            dpd_numeric[mismatch_mask].apply(dpd_to_classification)
+                        )
+                        st.success(f"Auto-corrected {mismatch_count} loan classifications based on DPD")
 
             # Final validation
             st.markdown("---")

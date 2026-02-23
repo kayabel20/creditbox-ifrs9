@@ -325,18 +325,21 @@ class ColumnMapper:
 
     @staticmethod
     def _get_date(row: pd.Series, col: str, default: date) -> date:
-        """Safely get date value"""
+        """Safely get date value, handling Excel serial numbers and various formats"""
         if col in row and pd.notna(row[col]):
             try:
                 val = row[col]
-                # Handle Excel date serial numbers
-                if isinstance(val, (int, float)):
-                    return datetime(1899, 12, 30) + timedelta(days=int(val))
+                # Handle Excel date serial numbers (range 25000-60000 covers ~1968-2064)
+                if isinstance(val, (int, float)) and 25000 < float(val) < 60000:
+                    return (datetime(1899, 12, 30) + timedelta(days=int(val))).date()
+                # Handle numpy int/float
+                elif isinstance(val, (np.integer, np.floating)) and 25000 < float(val) < 60000:
+                    return (datetime(1899, 12, 30) + timedelta(days=int(val))).date()
                 # Handle string dates
                 elif isinstance(val, str):
                     return pd.to_datetime(val).date()
-                # Handle datetime
-                elif isinstance(val, datetime):
+                # Handle pandas Timestamp
+                elif hasattr(val, 'date'):
                     return val.date()
                 # Handle date
                 elif isinstance(val, date):
