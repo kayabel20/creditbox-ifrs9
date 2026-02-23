@@ -1,0 +1,31 @@
+# Secrets (credentials, API keys)
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Data files (uploaded by users)
+*.xlsx
+*.csv
+*.xls
+*.db
+*.sqlite3
